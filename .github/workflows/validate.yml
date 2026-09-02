@@ -20,6 +20,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: hacs/action@main
+        env:
+          # The action reads repo files through the GitHub API; on a private
+          # repo that needs auth or every file check comes back empty.
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           category: integration
           # brands: not registered in home-assistant/brands (icons come from the

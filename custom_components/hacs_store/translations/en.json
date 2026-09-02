@@ -1,6 +1,6 @@
 {
   "title": "HACS Store",
-  "config_flow": {
+  "config": {
     "step": {
       "user": {
         "title": "HACS Store",
