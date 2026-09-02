@@ -81,11 +81,16 @@ function renderMarkdown(md, base) {
   const isBadge = u => /shields\.io|badgen|img\.badge|forthebadge|hacs_badge|my\.home-assistant\.io\/badges/i.test(u);
 
   return esc(md)
+    // HTML comments (escaped by now) — e.g. "<!-- omit in toc -->" in headings.
+    .replace(/&lt;!--[\s\S]*?--&gt;/g, "")
     .replace(/!\[([^\]]*)\]\(([^)\s]+)[^)]*\)/g, (m, alt, url) => {
       const src = abs(url);
       if (isBadge(url) || !src) return "";
       return `<img src="${src}" alt="${alt}" loading="lazy" class="md-img" />`;
     })
+    // Dropping a badge image out of "[![badge](img)](target)" leaves an empty
+    // link shell "[](target)" behind — remove those instead of printing them.
+    .replace(/\[\s*\]\([^)]*\)/g, "")
     .replace(/```([\s\S]*?)```/g, (_, c) => `<pre>${c.trim()}</pre>`)
     .replace(/^### (.*)$/gm, "<h3>$1</h3>")
     .replace(/^## (.*)$/gm, "<h2>$1</h2>")
