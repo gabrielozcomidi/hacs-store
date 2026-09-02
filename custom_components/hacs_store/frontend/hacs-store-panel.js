@@ -58,13 +58,13 @@ const esc = s => String(s ?? "").replace(/[&<>"']/g, c =>
 
 const fmt = n => n >= 1000 ? (n / 1000).toFixed(n >= 10000 ? 0 : 1).replace(/\.0$/, "") + "k" : String(n ?? 0);
 
-const ago = iso => {
-  if (!iso) return "unknown";
+const ago = (iso, t) => {
+  if (!iso) return t("agoUnknown");
   const days = Math.round((Date.now() - new Date(iso)) / 864e5);
-  if (days < 1) return "today";
-  if (days < 30) return days + "d ago";
-  if (days < 365) return Math.round(days / 30) + "mo ago";
-  return Math.round(days / 365) + "y ago";
+  if (days < 1) return t("agoToday");
+  if (days < 30) return t("agoDays", days);
+  if (days < 365) return t("agoMonths", Math.round(days / 30));
+  return t("agoYears", Math.round(days / 365));
 };
 
 // Minimal README rendering: escape first, then promote a few constructs.
@@ -324,15 +324,16 @@ class HacsStorePanel extends HTMLElement {
 
   async _load() {
     try {
-      const [ha, searchMod, rec, str, categories, synonyms] = await Promise.all([
+      const [ha, searchMod, rec, str, cat, categories, synonyms] = await Promise.all([
         import(BASE + "ha-data.js"),
         import(BASE + "search.js"),
         import(BASE + "recommend.js"),
         import(BASE + "strings.js"),
+        import(BASE + "catalog.js"), // only for popularity() — one ranking, not two copies
         fetch(BASE + "categories.json").then(r => r.json()),
         fetch(BASE + "synonyms.json").then(r => r.json())
       ]);
-      this._mod = { ...ha, ...searchMod, ...rec, ...str };
+      this._mod = { ...ha, ...searchMod, ...rec, ...str, popularity: cat.popularity };
       this._categories = categories;
       this.t = str.translator("en");
 
@@ -348,7 +349,22 @@ class HacsStorePanel extends HTMLElement {
     }
   }
 
-  connectedCallback() { this._render(); }
+  connectedCallback() {
+    // ⌘K / Ctrl+K focuses the search box — the hint in the searchbar promises it.
+    // Document-level because the panel itself rarely has focus; removed again in
+    // disconnectedCallback so it doesn't linger when HA swaps panels.
+    this._onKey ??= e => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        this._focused = true;
+        this.shadowRoot.querySelector("input")?.focus();
+      }
+    };
+    document.addEventListener("keydown", this._onKey);
+    this._render();
+  }
+
+  disconnectedCallback() { document.removeEventListener("keydown", this._onKey); }
 
   set(patch) { Object.assign(this._s, patch); this._render(); }
 
@@ -372,12 +388,13 @@ class HacsStorePanel extends HTMLElement {
   }
 
   _buttonFor(entry) {
+    const t = this.t;
     const have = this._s.installed[entry.full_name];
-    if (this._s.busy[entry.full_name]) return { label: "Working…", cls: "", disabled: true };
+    if (this._s.busy[entry.full_name]) return { label: t("working"), cls: "", disabled: true };
     if (have && entry.last_version && have !== entry.last_version)
-      return { label: "Update", cls: "primary" };
-    if (have) return { label: "Installed", cls: "ghost", disabled: true };
-    return { label: "Install", cls: "" };
+      return { label: t("update"), cls: "primary" };
+    if (have) return { label: t("installedBtn"), cls: "ghost", disabled: true };
+    return { label: t("install"), cls: "" };
   }
 
   _statLine(entry) {
@@ -394,7 +411,7 @@ class HacsStorePanel extends HTMLElement {
       await this._mod.download(this._hass, entry, entry.last_version);
       this._s.installed[entry.full_name] = entry.last_version;
     } catch (err) {
-      this._s.error = `Install failed for ${entry.full_name}: ${err?.message || err}`;
+      this._s.error = this.t("installFailed", { name: entry.full_name, err: err?.message || err });
     }
     const busy = { ...this._s.busy };
     delete busy[entry.full_name];
@@ -453,7 +470,7 @@ class HacsStorePanel extends HTMLElement {
       ${extra}
       <div class="stats">${this._statLine(entry)}</div>
       <div class="cardfoot">
-        <span class="tag">${esc(entry.categories[0] || "Uncategorised")}</span>
+        <span class="tag">${esc(entry.categories[0] ? this.t.category(entry.categories[0]) : this.t("uncategorised"))}</span>
         <button class="act ${b.cls}" data-act="${esc(entry.full_name)}" ${b.disabled ? "disabled" : ""}>${esc(b.label)}</button>
       </div>
     </div>`;
@@ -466,15 +483,15 @@ class HacsStorePanel extends HTMLElement {
         <h2 class="section">${esc(title)}</h2>
         ${note ? `<span class="note">${esc(note)}</span>` : ""}
         ${modes || ""}
-        ${seeAll ? `<span class="seeall" data-seeall="${esc(seeAll)}">See all →</span>` : ""}
+        ${seeAll ? `<span class="seeall" data-seeall="${esc(seeAll)}">${this.t("seeAll")} ${this.t.arrow}</span>` : ""}
       </div>
       <div class="rail">${items.map(e => this._card(e)).join("")}</div>
     </div>`;
   }
 
   _homeHtml() {
-    const s = this._s;
-    const { popularity } = { popularity: e => (e.stars || 0) + Math.log10(1 + (e.downloads || 0)) * 50 };
+    const s = this._s, t = this.t;
+    const { popularity } = this._mod;
     const visible = s.type === "all" ? s.entries : s.entries.filter(e => e.section === s.type);
     const pool = s.category ? visible.filter(e => e.categories.includes(s.category)) : visible;
 
@@ -484,12 +501,12 @@ class HacsStorePanel extends HTMLElement {
     const byTrend = a => [...a].sort((x, y) => trend(y) - trend(x));
 
     const suggestions = this._mod.recommend({
-      entries: s.entries, installed: s.installed, categories: this._categories, limit: 3
+      entries: s.entries, installed: s.installed, categories: this._categories, limit: 3, t
     });
 
     const modes = s.category ? "" : `<div class="seg">
-      <span class="${s.railMode === "starred" ? "on" : ""}" data-mode="starred">Most starred</span>
-      <span class="${s.railMode === "trending" ? "on" : ""}" data-mode="trending">Trending</span>
+      <span class="${s.railMode === "starred" ? "on" : ""}" data-mode="starred">${t("mostStarred")}</span>
+      <span class="${s.railMode === "trending" ? "on" : ""}" data-mode="trending">${t("trending")}</span>
     </div>`;
 
     const allCats = [...new Set(s.entries.flatMap(e => e.categories))].sort();
@@ -497,56 +514,55 @@ class HacsStorePanel extends HTMLElement {
     return `<div class="stack g38" style="padding:26px 0 44px">
       <div class="hero">
         <div style="flex:1 1 320px;min-width:0;padding-top:8px">
-          <h1 class="display">Discover</h1>
-          <p class="lede">Everything the community has built for Home Assistant, sorted by what it actually does — not by repository name.</p>
+          <h1 class="display">${t("discover")}</h1>
+          <p class="lede">${t("discoverSub")}</p>
         </div>
         <div class="herobox">
           <div class="rowhead" style="margin-bottom:16px">
-            <h2 style="margin:0;font-size:17px;font-weight:700;letter-spacing:-0.01em">Suggested for you</h2>
-            <span class="note">from your ${Object.keys(s.installed).length} installed</span>
+            <h2 style="margin:0;font-size:17px;font-weight:700;letter-spacing:-0.01em">${t("suggestedFor")}</h2>
+            <span class="note">${t("fromInstalled", Object.keys(s.installed).length)}</span>
           </div>
           <div class="sugg">${suggestions.map(x =>
             this._card(x.entry, `<div class="reason">${esc(x.reason)}</div>`)).join("") ||
-            `<span class="note">Nothing to suggest yet — install something and come back.</span>`}</div>
+            `<span class="note">${t("nothingToSuggest")}</span>`}</div>
         </div>
       </div>
 
       <div class="stack g14">
-        <div class="pad"><h2 class="section">By use</h2></div>
+        <div class="pad"><h2 class="section">${t("byUse")}</h2></div>
         <div class="chips pad">
-          <span class="pill ${!s.category ? "on" : ""}" data-cat="">All</span>
-          ${allCats.map(c => `<span class="pill ${s.category === c ? "on" : ""}" data-cat="${esc(c)}">${esc(c)}</span>`).join("")}
+          <span class="pill ${!s.category ? "on" : ""}" data-cat="">${t("all")}</span>
+          ${allCats.map(c => `<span class="pill ${s.category === c ? "on" : ""}" data-cat="${esc(c)}">${esc(t.category(c))}</span>`).join("")}
         </div>
       </div>
 
       ${this._railHtml(
-        s.category || (s.railMode === "trending" ? "Trending" : "Most starred"),
-        s.category ? "filtered" : (s.railMode === "trending" ? "recently updated, well starred" : "downloads aren't reported for most repos"),
+        s.category ? t.category(s.category) : (s.railMode === "trending" ? t("trending") : t("mostStarred")),
+        s.category ? t("filtered") : (s.railMode === "trending" ? t("trendingNote") : t("downloadsNote")),
         (s.railMode === "trending" ? byTrend(pool) : byStars(pool)).slice(0, 12),
         "", modes)}
 
-      ${!s.category ? this._railHtml("Lighting", "",
+      ${!s.category ? this._railHtml(t.category("Lighting"), "",
         byStars(visible.filter(e => e.categories.includes("Lighting"))).slice(0, 12), "Lighting", "") : ""}
 
-      ${this._railHtml("New & updated", "",
+      ${this._railHtml(t("newUpdated"), "",
         [...pool].sort((a, b) => new Date(b.last_updated || 0) - new Date(a.last_updated || 0)).slice(0, 12), "", "")}
     </div>`;
   }
 
   _searchHtml() {
-    const s = this._s;
+    const s = this._s, t = this.t;
     if (!s.q.trim()) {
-      const examples = ["how do I lower my power bill", "robot vacuum", "popups on my dashboard",
-        "cameras without the cloud", "charts for my sensors", "local control without cloud"];
+      const examples = t("trySamples");
       return `<div class="page stack g22">
-        <div><h1 class="display" style="font-size:44px">Search</h1>
-          <p class="lede">Type a name, or say what you want to happen.</p></div>
+        <div><h1 class="display" style="font-size:44px">${t("searchTitle")}</h1>
+          <p class="lede">${t("searchSub")}</p></div>
         ${s.recent.length ? `<div class="stack g10">
-          <div class="grouplabel" style="padding:0">Recent</div>
+          <div class="grouplabel" style="padding:0">${t("recent")}</div>
           <div class="chips">${s.recent.map(r => `<span class="pill" data-q="${esc(r)}">${esc(r)}</span>`).join("")}</div>
         </div>` : ""}
         <div class="stack g10">
-          <div class="grouplabel" style="padding:0">Try</div>
+          <div class="grouplabel" style="padding:0">${t("try")}</div>
           <div class="chips">${examples.map(x => `<span class="pill" data-q="${esc(x)}">${esc(x)}</span>`).join("")}</div>
         </div>
       </div>`;
@@ -571,47 +587,49 @@ class HacsStorePanel extends HTMLElement {
 
     const chips = out.expanded.flatMap(e => e.to.filter(x => !s.removed.includes(x)).slice(0, 5));
 
+    const sorts = [["relevance", t("relevance")], ["stars", t("stars")], ["updated", t("updatedSort")]];
+
     return `<div class="page stack g20">
       <div class="rowhead" style="align-items:baseline;flex-wrap:wrap">
         <h1 class="display" style="font-size:34px" dir="auto">${esc(s.q)}</h1>
-        <span class="note">${list.length} ${list.length === 1 ? "result" : "results"}</span>
+        <span class="note">${t("results", list.length)}</span>
         <div class="seg" style="margin-inline-start:auto">
-          ${["relevance", "stars", "updated"].map(k =>
-            `<span class="${s.sort === k ? "on" : ""}" data-sort="${k}">${k[0].toUpperCase() + k.slice(1)}</span>`).join("")}
+          ${sorts.map(([k, l]) =>
+            `<span class="${s.sort === k ? "on" : ""}" data-sort="${k}">${esc(l)}</span>`).join("")}
         </div>
       </div>
 
       ${chips.length ? `<div class="chips" style="align-items:center">
-        <span class="grouplabel" style="padding:0">Also searching</span>
+        <span class="grouplabel" style="padding:0">${t("alsoSearching")}</span>
         ${chips.map(c => `<span class="xchip" data-drop="${esc(c)}" dir="auto">${esc(c)}<b>×</b></span>`).join("")}
       </div>` : ""}
 
       <div class="facets">
-        <div class="facet"><span class="grouplabel">Category</span>
-          <div class="chips"><span class="pill sm ${!s.category ? "on" : ""}" data-cat="">Any category</span>
-          ${facetCats.map(c => `<span class="pill sm ${s.category === c ? "on" : ""}" data-cat="${esc(c)}">${esc(c)}</span>`).join("")}</div></div>
-        <div class="facet"><span class="grouplabel">Status</span>
+        <div class="facet"><span class="grouplabel">${t("category")}</span>
+          <div class="chips"><span class="pill sm ${!s.category ? "on" : ""}" data-cat="">${t("anyCategory")}</span>
+          ${facetCats.map(c => `<span class="pill sm ${s.category === c ? "on" : ""}" data-cat="${esc(c)}">${esc(t.category(c))}</span>`).join("")}</div></div>
+        <div class="facet"><span class="grouplabel">${t("status")}</span>
           <div class="chips">
-            <span class="pill sm ${s.status === "any" ? "on" : ""}" data-status="any">Any</span>
-            <span class="pill sm ${s.status === "installed" ? "on" : ""}" data-status="installed">Installed</span>
-            <span class="pill sm ${s.status === "missing" ? "on" : ""}" data-status="missing">Not installed</span>
+            <span class="pill sm ${s.status === "any" ? "on" : ""}" data-status="any">${t("anyStatus")}</span>
+            <span class="pill sm ${s.status === "installed" ? "on" : ""}" data-status="installed">${t("onlyInstalled")}</span>
+            <span class="pill sm ${s.status === "missing" ? "on" : ""}" data-status="missing">${t("onlyNotInstalled")}</span>
           </div></div>
-        <div class="facet"><span class="grouplabel">Updated within</span>
-          <div class="chips">${[["any", "Anytime"], ["month", "30 days"], ["quarter", "3 months"], ["year", "A year"]]
-            .map(([k, l]) => `<span class="pill sm ${s.within === k ? "on" : ""}" data-within="${k}">${l}</span>`).join("")}</div></div>
+        <div class="facet"><span class="grouplabel">${t("updatedWithin")}</span>
+          <div class="chips">${[["any", t("anytime")], ["month", t("month")], ["quarter", t("quarter")], ["year", t("year")]]
+            .map(([k, l]) => `<span class="pill sm ${s.within === k ? "on" : ""}" data-within="${k}">${esc(l)}</span>`).join("")}</div></div>
       </div>
 
       ${list.length ? `<div class="grid">${list.slice(0, 60).map(r =>
-        this._card(r.entry, `<div class="why" dir="auto">${esc(this._mod.explain(r))}</div>`)).join("")}</div>`
-        : `<div class="empty"><b>Nothing matched</b>
-             <p>No repository in the catalog matches that. If the word makes sense to you but not to the store, add it to synonyms.json and it will work from then on.</p></div>`}
+        this._card(r.entry, `<div class="why" dir="auto">${esc(this._mod.explain(r, t))}</div>`)).join("")}</div>`
+        : `<div class="empty"><b>${t("nothingMatched")}</b>
+             <p>${t("nothingMatchedBody")}</p></div>`}
     </div>`;
   }
 
   _detailHtml() {
-    const s = this._s;
+    const s = this._s, t = this.t;
     const d = this._entry(s.detailId);
-    if (!d) return `<div class="page"><div class="empty"><b>Not found</b></div></div>`;
+    if (!d) return `<div class="page"><div class="empty"><b>${t("notFound")}</b></div></div>`;
 
     const b = this._buttonFor(d);
     const have = s.installed[d.full_name];
@@ -620,20 +638,20 @@ class HacsStorePanel extends HTMLElement {
       .sort((x, y) => y.stars - x.stars).slice(0, 8);
 
     const facts = [
-      ["Latest", d.last_version || "—"],
-      ["You have", have || "not installed"],
-      ["Stars", fmt(d.stars)],
-      ["Downloads", d.downloads ? fmt(d.downloads) : "not reported"],
-      ["Updated", ago(d.last_updated)],
-      ["Open issues", String(d.open_issues)],
-      ["Type", d.section]
+      [t("latest"), d.last_version || "—"],
+      [t("youHave"), have || t("notInstalled")],
+      [t("stars"), fmt(d.stars)],
+      [t("downloads"), d.downloads ? fmt(d.downloads) : t("notReported")],
+      [t("updatedFact"), ago(d.last_updated, t)],
+      [t("openIssues"), String(d.open_issues)],
+      [t("typeFact"), t(d.section)]
     ];
 
-    const readmeNote = { idle: "", loading: "fetching…", ok: "raw.githubusercontent.com",
-      error: "could not fetch — open on GitHub instead" }[s.readmeState];
+    const readmeNote = { idle: "", loading: t("readmeLoading"), ok: t("readmeOk"),
+      error: t("readmeError") }[s.readmeState];
 
     return `<div class="page stack g22" style="padding-top:22px">
-      <span class="pill sm" style="align-self:flex-start" data-back="1">← Back</span>
+      <span class="pill sm" style="align-self:flex-start" data-back="1">${t.backArrow} ${t("back")}</span>
 
       <div class="detailhead">
         ${this._tile(d, "lg")}
@@ -647,7 +665,7 @@ class HacsStorePanel extends HTMLElement {
           </div>
           <p class="lede" style="max-width:560px;color:#454e48;font-size:16px" dir="auto">${esc(d.description)}</p>
           <div class="chips" style="margin-top:16px">
-            ${(d.categories.length ? d.categories : ["Uncategorised"]).map(c => `<span class="tag">${esc(c)}</span>`).join("")}
+            ${(d.categories.length ? d.categories.map(t.category) : [t("uncategorised")]).map(c => `<span class="tag">${esc(c)}</span>`).join("")}
           </div>
           ${d.topics.length ? `<div class="chips" style="margin-top:10px;gap:7px">
             ${d.topics.slice(0, 8).map(tp => `<span class="topic" dir="auto">${esc(tp)}</span>`).join("")}</div>` : ""}
@@ -657,54 +675,58 @@ class HacsStorePanel extends HTMLElement {
                   style="padding:14px 20px;font-size:14px">${esc(b.label)}</button>
           ${facts.map(([k, v]) => `<div class="fact"><span class="k">${esc(k)}</span><span class="v">${esc(v)}</span></div>`).join("")}
           <a href="https://github.com/${esc(d.full_name)}" target="_blank" rel="noreferrer"
-             style="color:var(--hs-accent-ink);text-decoration:none;font-weight:600;font-size:13px;padding-top:6px">Open on GitHub ↗</a>
+             style="color:var(--hs-accent-ink);text-decoration:none;font-weight:600;font-size:13px;padding-top:6px">${t("openOnGitHub")} ↗</a>
         </div>
       </div>
 
       <div class="readme">
         <div class="rowhead">
-          <h2 style="margin:0;font-size:18px;font-weight:700">README</h2>
+          <h2 style="margin:0;font-size:18px;font-weight:700">${t("readme")}</h2>
           <span class="note">${esc(readmeNote)}</span>
           <button class="act dark" data-readme="1" style="margin-inline-start:auto">
-            ${s.readmeState === "ok" ? "Reload" : "Load README"}</button>
+            ${s.readmeState === "ok" ? t("reload") : t("loadReadme")}</button>
         </div>
         ${s.readme ? `<div class="body" dir="auto">${s.readme}</div>`
-          : `<div class="note">${s.readmeState === "loading" ? "Fetching README…" : "Not loaded."}</div>`}
+          : `<div class="note">${s.readmeState === "loading" ? t("readmeFetching") : t("readmeNotLoaded")}</div>`}
       </div>
 
       ${related.length ? `<div class="stack g16">
-        <h2 class="section">Related</h2>
+        <h2 class="section">${t("related")}</h2>
         <div class="rail" style="padding-left:0;padding-right:0">${related.map(e => this._card(e)).join("")}</div>
       </div>` : ""}
     </div>`;
   }
 
   _installedHtml() {
-    const s = this._s;
+    const s = this._s, t = this.t;
+    const sections = ["integration", "plugin", "theme", "template"];
     const rows = Object.entries(s.installed).map(([fn, ver]) => {
       const e = this._entry(fn);
       if (!e) return null;
       const stale = !!(e.last_version && e.last_version !== ver);
       if (s.installedFilter === "updates" && !stale) return null;
-      if (["integration", "plugin"].includes(s.installedFilter) && e.section !== s.installedFilter) return null;
+      if (sections.includes(s.installedFilter) && e.section !== s.installedFilter) return null;
       return { e, ver, stale };
     }).filter(Boolean).sort((a, b) => b.stale - a.stale);
 
     const updateCount = Object.entries(s.installed)
       .filter(([fn, v]) => { const e = this._entry(fn); return e && e.last_version && e.last_version !== v; }).length;
 
-    const filters = [["all", "All"], ["updates", "Needs update"], ["integration", "Integrations"], ["plugin", "Lovelace cards"]];
+    // Only offer section filters that would show something.
+    const present = new Set(Object.keys(s.installed).map(fn => this._entry(fn)?.section));
+    const filters = [["all", t("all")], ["updates", t("onlyUpdates")],
+      ...sections.filter(k => present.has(k)).map(k => [k, t(k)])];
 
     return `<div class="page stack g20">
-      <div><h1 class="display" style="font-size:44px">Installed</h1>
-        <p class="lede">${Object.keys(s.installed).length} repositories, read live from HACS.</p></div>
+      <div><h1 class="display" style="font-size:44px">${t("installed")}</h1>
+        <p class="lede">${t("installedNote", Object.keys(s.installed).length)}</p></div>
 
       <div class="chips">${filters.map(([k, l]) =>
-        `<span class="pill ${s.installedFilter === k ? "on" : ""}" data-ifilter="${k}">${l}</span>`).join("")}</div>
+        `<span class="pill ${s.installedFilter === k ? "on" : ""}" data-ifilter="${k}">${esc(l)}</span>`).join("")}</div>
 
       ${updateCount ? `<div class="banner">
-        <b>${updateCount} ${updateCount === 1 ? "update" : "updates"} available</b>
-        <button class="act primary" data-updateall="1">Update all</button></div>` : ""}
+        <b>${t("updatesAvailable", updateCount)}</b>
+        <button class="act primary" data-updateall="1">${t("updateAll")}</button></div>` : ""}
 
       <div class="stack g10">${rows.map(({ e, ver, stale }) => {
         const b = this._buttonFor(e);
@@ -717,7 +739,7 @@ class HacsStorePanel extends HTMLElement {
           <span class="ver ${stale ? "stale" : ""}">${esc(stale ? ver + " → " + e.last_version : ver)}</span>
           <button class="act ${b.cls}" data-act="${esc(e.full_name)}" ${b.disabled ? "disabled" : ""}>${esc(b.label)}</button>
         </div>`;
-      }).join("") || `<div class="empty"><b>Nothing here</b><p>No installed repository matches that filter.</p></div>`}</div>
+      }).join("") || `<div class="empty"><b>${t("nothingHere")}</b><p>${t("nothingHereBody")}</p></div>`}</div>
     </div>`;
   }
 
@@ -725,24 +747,29 @@ class HacsStorePanel extends HTMLElement {
     const s = this._s;
     const root = this.shadowRoot;
 
-    if (s.loading) {
+    // Before the modules finish loading there is no translator yet, so the
+    // loading screen (and a load *failure*) render as a minimal shell.
+    if (s.loading || !this.t) {
       root.innerHTML = `<style>${STYLES}</style><div class="shell"><main>
-        <div class="page"><span class="note">Reading your catalog from HACS…</span></div></main></div>`;
+        <div class="page">${s.error
+          ? `<div class="error">${esc(s.error)}</div>`
+          : `<span class="note">Reading your catalog from HACS…</span>`}</div></main></div>`;
       return;
     }
+    const t = this.t;
 
     const counts = sec => s.entries.filter(e => e.section === sec).length;
     const updateCount = Object.entries(s.installed)
       .filter(([fn, v]) => { const e = this._entry(fn); return e && e.last_version && e.last_version !== v; }).length;
 
     const nav = [
-      ["home", "Discover", "home", ""],
-      ["search", "Search", "search", ""],
-      ["installed", "Installed", "box", String(Object.keys(s.installed).length)]
+      ["home", t("discover"), "home", ""],
+      ["search", t("search"), "search", ""],
+      ["installed", t("installed"), "box", String(Object.keys(s.installed).length)]
     ];
-    const types = [["all", "All", s.entries.length], ["integration", "Integrations", counts("integration")],
-      ["plugin", "Lovelace cards", counts("plugin")], ["theme", "Themes", counts("theme")],
-      ["template", "Templates", counts("template")]];
+    const types = [["all", t("all"), s.entries.length], ["integration", t("integration"), counts("integration")],
+      ["plugin", t("plugin"), counts("plugin")], ["theme", t("theme"), counts("theme")],
+      ["template", t("template"), counts("template")]];
 
     const body = s.error
       ? `<div class="page"><div class="error">${esc(s.error)}</div></div>`
@@ -754,22 +781,22 @@ class HacsStorePanel extends HTMLElement {
     root.innerHTML = `<style>${STYLES}</style>
     <div class="shell">
       <nav>
-        <div class="brand"><div class="mark">${svg("home", 16)}</div><div class="name">HACS Store</div></div>
+        <div class="brand"><div class="mark">${svg("home", 16)}</div><div class="name">${t("appName")}</div></div>
         <div class="navlist">${nav.map(([k, label, icon, badge]) => `
           <div class="navitem ${s.screen === k || (k === "home" && s.screen === "detail") ? "on" : ""}" data-nav="${k}">
-            ${svg(icon, 19)}<span>${label}</span>
+            ${svg(icon, 19)}<span>${esc(label)}</span>
             ${badge ? `<span class="badge">${badge}</span>` : ""}
           </div>`).join("")}</div>
 
         <div class="stack" style="gap:6px">
-          <div class="grouplabel">Type</div>
+          <div class="grouplabel">${t("type")}</div>
           ${types.map(([k, label, n]) => `
-            <div class="typeitem ${s.type === k ? "on" : ""}" data-type="${k}">${label}<span>${n}</span></div>`).join("")}
+            <div class="typeitem ${s.type === k ? "on" : ""}" data-type="${k}">${esc(label)}<span>${n}</span></div>`).join("")}
         </div>
 
         <div class="status">
-          ${updateCount ? `${updateCount} updates waiting` : "Everything up to date"}
-          <br /><span class="sub">live from HACS · ${s.entries.length} repos</span>
+          ${updateCount ? t("updatesWaiting", updateCount) : t("upToDate")}
+          <br /><span class="sub">${t("liveFromHacs", s.entries.length)}</span>
         </div>
       </nav>
 
@@ -777,9 +804,9 @@ class HacsStorePanel extends HTMLElement {
         <header>
           <div class="searchbar">
             ${svg("search", 17)}
-            <input type="search" placeholder="Search, or describe what you want to do…"
+            <input type="search" placeholder="${esc(t("searchPlaceholder"))}"
                    value="${esc(s.q)}" dir="auto" />
-            <span class="hint" data-clear="1">${s.q ? "clear" : "⌘K"}</span>
+            <span class="hint" data-clear="1">${s.q ? esc(t("clear")) : "⌘K"}</span>
           </div>
         </header>
         <div class="scroll">${body}</div>
@@ -797,6 +824,9 @@ class HacsStorePanel extends HTMLElement {
       input.addEventListener("focus", () => { this._focused = true; });
       input.addEventListener("blur", () => { this._focused = false; });
       input.addEventListener("input", e => this._setQuery(e.target.value));
+      input.addEventListener("keydown", e => {
+        if (e.key === "Escape" && input.value) { e.preventDefault(); this._setQuery(""); }
+      });
     }
   }
 

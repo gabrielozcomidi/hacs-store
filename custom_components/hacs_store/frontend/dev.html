@@ -1,0 +1,87 @@
+<!doctype html>
+<!--
+  dev.html — run the real panel without a Home Assistant server.
+
+  This is the Phase 1 standalone entry point: it loads the exact same
+  hacs-store-panel.js the HA sidebar uses, but hands it a fake `hass` whose
+  websocket answers come from the public catalog (data-v2.hacs.xyz) instead of
+  HACS. Installs are mocked: they "succeed" after a short delay and only touch
+  memory. Nothing here ships any behaviour — delete this file and the panel is
+  unchanged.
+
+  ES modules refuse to load from file://, so serve the folder:
+
+      cd custom_components/hacs_store/frontend
+      python3 -m http.server 8000
+      open http://localhost:8000/dev.html
+-->
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>HACS Store — dev harness</title>
+  <style>html, body { margin: 0; height: 100%; }</style>
+</head>
+<body>
+  <hacs-store-panel></hacs-store-panel>
+
+  <script type="module">
+    import { loadCatalog } from "./catalog.js";
+    import "./hacs-store-panel.js";
+
+    // A plausible installed set, so Suggested/Installed/update badges have
+    // something to chew on. One version is pinned old to force an update badge.
+    const INSTALLED = {
+      "piitaya/lovelace-mushroom": null,          // null = pretend current version
+      "thomasloven/lovelace-card-mod": null,
+      "kalkih/mini-graph-card": "v0.0.1",         // old on purpose → shows "Update"
+      "bramstroker/homeassistant-powercalc": null,
+      "GuyKh/iec-custom-component": null
+    };
+
+    // ha-data.js normalises defensively, so the fake list only needs the raw
+    // fields it reads: catalog entries pass through almost unchanged.
+    //
+    // sections: [] because data-v2.hacs.xyz sends no CORS headers — a browser
+    // can never fetch it directly (verified 2026-09). The bundled snapshot
+    // (150 real entries, top-starred) is the whole catalog here. Refresh it:
+    //   python3 scripts/refresh-snapshot.py
+    async function buildList() {
+      const { entries } = await loadCatalog({ sections: [], fallbackUrl: "./catalog-sample.json" });
+      return entries.map(e => ({
+        id: e.id,
+        category: e.section,
+        full_name: e.full_name,
+        name: e.name,
+        description: e.description,
+        domain: e.domain,
+        topics: e.topics,
+        downloads: e.downloads,
+        stargazers_count: e.stars,
+        open_issues: e.open_issues,
+        country: e.countries,
+        last_updated: e.last_updated,
+        available_version: e.last_version,
+        prerelease: e.prerelease,
+        last_commit: e.last_commit,
+        installed: e.full_name in INSTALLED,
+        installed_version: e.full_name in INSTALLED
+          ? (INSTALLED[e.full_name] ?? e.last_version) : null
+      }));
+    }
+
+    const fakeHass = {
+      async callWS(msg) {
+        if (msg.type === "hacs/repositories/list") return buildList();
+        if (msg.type === "hacs/repository/download") {
+          await new Promise(r => setTimeout(r, 800)); // let "Working…" be visible
+          return { ok: true };
+        }
+        throw new Error(`dev.html: unmocked websocket call ${msg.type}`);
+      }
+    };
+
+    document.querySelector("hacs-store-panel").hass = fakeHass;
+  </script>
+</body>
+</html>

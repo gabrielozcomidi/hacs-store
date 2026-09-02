@@ -2,6 +2,11 @@
 //
 // Phase 1: fetch the public static catalog from data-v2.hacs.xyz, cache it in
 // localStorage with an ETag + TTL, and normalise each entry into a flat shape.
+//
+// Reality check (2026-09): data-v2.hacs.xyz sends no CORS headers, so a browser
+// page can NOT fetch it directly — only HACS itself (server-side) can. In the
+// browser, always pass fallbackUrl pointing at a bundled snapshot
+// (catalog-sample.json); dev.html shows how.
 // Phase 2: replace loadSection() with an HA websocket call to
 // hacs/repositories/list. Nothing else in the app changes, because nothing else
 // in the app ever sees a raw catalog object.

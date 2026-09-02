@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "dev-harness",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": ["-m", "http.server", "8177", "--directory", "custom_components/hacs_store/frontend"],
+      "port": 8177
+    }
+  ]
+}

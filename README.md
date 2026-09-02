@@ -64,7 +64,15 @@ There is intentionally no build step, no dependencies, and no framework: the bro
 
 ## Development
 
-Copy `custom_components/hacs_store/` to a test HA instance and restart. Frontend-only edits need a hard refresh; bump `version` in `manifest.json` when shipping frontend changes (it cache-busts the panel module). Syntax checks without any tooling:
+No HA server needed for UI work — a dev harness runs the real panel against a bundled snapshot of the live catalog, with mocked installs:
+
+```bash
+cd custom_components/hacs_store/frontend && python3 -m http.server 8177
+```
+
+then open `http://localhost:8177/dev.html` (refresh the snapshot with `python3 scripts/refresh-snapshot.py`).
+
+For the real thing, copy `custom_components/hacs_store/` to a test HA instance and restart. Frontend-only edits need a hard refresh; bump `version` in `manifest.json` when shipping frontend changes (it cache-busts the panel module). Syntax checks without any tooling:
 
 ```bash
 python3 -m py_compile custom_components/hacs_store/*.py

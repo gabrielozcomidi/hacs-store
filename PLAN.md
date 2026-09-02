@@ -120,7 +120,21 @@ parallel downloads. **Fix:** make the loop sequential
    Two HACS checks (hacsjson, integration_manifest) are ignored while the
    repo is private — they fetch file contents remotely and 404; remove the
    ignores when the repo goes public.
-3. **Milestone 3 — polish:** items 6–9, 13.
+3. **Milestone 3 — polish:** items 6–9, 13. ✅ **Done** (v0.1.2): all panel
+   copy routed through strings.js (drifted entries fixed, missing keys added);
+   `popularity()` now imported from catalog.js instead of duplicated; the
+   Installed screen offers Theme/Template filters (only for sections actually
+   installed); ⌘K/Ctrl+K really focuses search and Escape clears it; and
+   Phase 1 lives as `frontend/dev.html` — the real panel with a fake `hass`
+   fed from `catalog-sample.json` (150 real top-starred entries, refresh via
+   `scripts/refresh-snapshot.py`). All four screens, Hebrew search with
+   expansion chips, the mocked update flow, and ⌘K were verified in a browser
+   against that harness.
+
+   **Finding from that testing:** data-v2.hacs.xyz sends **no CORS headers** —
+   a browser can never fetch the catalog directly, so catalog.js's live-fetch
+   path only works server-side; browser use must go through `fallbackUrl` or
+   the HACS websocket. Documented in catalog.js and CLAUDE.md.
 
 Each milestone is one commit/PR-sized chunk; nothing depends on tooling that
 doesn't exist in the repo.

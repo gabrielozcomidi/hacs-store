@@ -12,7 +12,15 @@ The owner is an AV/IT engineer and HA power user, not a professional developer. 
 
 There is intentionally **no build step, no package manager, no lint config, and no test suite**. The frontend is plain ES modules loaded directly by the browser; the Python side is a standard HA custom component.
 
-To try changes, copy `custom_components/hacs_store/` into a Home Assistant `config/custom_components/` directory and restart HA (frontend-only edits need only a browser hard-refresh — static files are served with `cache_headers=False`, but the panel module URL is cache-busted by the `version` in `manifest.json`, so bump it when the panel file changes for other browsers). The integration requires HACS to be installed (declared in `manifest.json` dependencies) and is added via the UI config flow (one click, no options).
+The fastest way to see UI changes is the **standalone dev harness** — the real panel with a fake `hass` fed from a bundled 150-entry snapshot of the live catalog, no HA server needed:
+
+```bash
+cd custom_components/hacs_store/frontend && python3 -m http.server 8177
+```
+
+then open `http://localhost:8177/dev.html`. Refresh the snapshot with `python3 scripts/refresh-snapshot.py`. Important constraint discovered in testing: **data-v2.hacs.xyz sends no CORS headers**, so a browser can never fetch the catalog directly — anything browser-side must use the snapshot (`loadCatalog`'s `fallbackUrl`) or the HACS websocket.
+
+To try changes for real, copy `custom_components/hacs_store/` into a Home Assistant `config/custom_components/` directory and restart HA (frontend-only edits need only a browser hard-refresh — static files are served with `cache_headers=False`, but the panel module URL is cache-busted by the `version` in `manifest.json`, so bump it when the panel file changes for other browsers). The integration requires HACS to be installed (declared in `manifest.json` dependencies) and is added via the UI config flow (one click, no options).
 
 Quick syntax checks with no tooling installed:
 
@@ -41,7 +49,7 @@ The Python side does almost nothing; the browser does everything.
 - **Editable data files** (meant to be hand-edited by the owner, preserve their `_readme` keys):
   - `frontend/categories.json` — curated `full_name → [categories]` taxonomy (HACS provides none). The `_taxonomy` list is the canonical category set, also mirrored in the `CAT` icon/color map in the panel.
   - `frontend/synonyms.json` — query-expansion map incl. Hebrew keys, plus `_stopwords`.
-- **Strings** (`frontend/strings.js`): translation table + `translator()`. Note: the panel currently hardcodes English rather than using `t()` everywhere — if you touch UI copy, prefer routing it through strings.js.
+- **Strings** (`frontend/strings.js`): translation table + `translator()`. All visible panel copy goes through `t()` — never hardcode a user-facing string in the panel (the only exception is the pre-module-load loading/error shell, which renders before strings.js is imported). Adding a language means adding a block alongside `en`.
 
 ### Data facts worth knowing (verified against the live catalog, see comments in catalog.js)
 
