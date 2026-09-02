@@ -70,18 +70,31 @@ const ago = iso => {
 // Minimal README rendering: escape first, then promote a few constructs.
 // Screenshots are kept (they are the most useful thing in a README); badges are not.
 function renderMarkdown(md, base) {
-  const abs = u => /^https?:/.test(u) ? u : base + u.replace(/^\.?\//, "");
+  // READMEs are third-party content shown to an HA admin. Only http(s) URLs may
+  // become live hrefs/srcs; any other scheme (javascript:, data:, …) is refused.
+  // Relative paths resolve against the repo's raw.githubusercontent base.
+  const abs = u => {
+    if (/^https?:\/\//i.test(u)) return u;
+    if (/^[a-z][a-z0-9+.-]*:/i.test(u)) return null; // some other scheme — never render it
+    return base + u.replace(/^\.?\//, "");
+  };
   const isBadge = u => /shields\.io|badgen|img\.badge|forthebadge|hacs_badge|my\.home-assistant\.io\/badges/i.test(u);
 
   return esc(md)
-    .replace(/!\[([^\]]*)\]\(([^)\s]+)[^)]*\)/g, (m, alt, url) => isBadge(url) ? "" :
-      `<img src="${abs(url)}" alt="${alt}" loading="lazy" class="md-img" />`)
+    .replace(/!\[([^\]]*)\]\(([^)\s]+)[^)]*\)/g, (m, alt, url) => {
+      const src = abs(url);
+      if (isBadge(url) || !src) return "";
+      return `<img src="${src}" alt="${alt}" loading="lazy" class="md-img" />`;
+    })
     .replace(/```([\s\S]*?)```/g, (_, c) => `<pre>${c.trim()}</pre>`)
     .replace(/^### (.*)$/gm, "<h3>$1</h3>")
     .replace(/^## (.*)$/gm, "<h2>$1</h2>")
     .replace(/^# (.*)$/gm, "<h1>$1</h1>")
     .replace(/^[-*] (.*)$/gm, "<div class='li'>• $1</div>")
-    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noreferrer">$1</a>')
+    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, (m, text, url) => {
+      const href = abs(url);
+      return href ? `<a href="${href}" target="_blank" rel="noreferrer">${text}</a>` : text;
+    })
     .replace(/`([^`]+)`/g, "<code>$1</code>")
     .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
     .replace(/\n{2,}/g, "<div class='gap'></div>");
@@ -290,6 +303,11 @@ class HacsStorePanel extends HTMLElement {
   constructor() {
     super();
     this.attachShadow({ mode: "open" });
+    // One delegated click listener for the whole panel, attached once.
+    // Replacing innerHTML on render clears child nodes but NOT listeners on the
+    // shadow root itself, so adding this per render would stack a copy per
+    // keystroke — and fire installs once per copy.
+    this.shadowRoot.addEventListener("click", e => this._onClick(e));
     this._s = {
       loading: true, error: null, screen: "home", q: "", removed: [], sort: "relevance",
       type: "all", category: null, status: "any", within: "any", railMode: "starred",
@@ -381,6 +399,15 @@ class HacsStorePanel extends HTMLElement {
     const busy = { ...this._s.busy };
     delete busy[entry.full_name];
     this.set({ busy });
+  }
+
+  // One repo at a time: HACS handles a burst of parallel downloads badly, and
+  // sequential updates also mean the busy flags on screen tell the truth.
+  async _updateAll() {
+    for (const [fn, v] of Object.entries(this._s.installed)) {
+      const en = this._entry(fn);
+      if (en && en.last_version && en.last_version !== v) await this._act(en);
+    }
   }
 
   _open(entry) {
@@ -763,9 +790,7 @@ class HacsStorePanel extends HTMLElement {
   }
 
   _bind() {
-    const root = this.shadowRoot;
-
-    const input = root.querySelector("input");
+    const input = this.shadowRoot.querySelector("input");
     if (input) {
       // Re-render replaces the node, so restore focus and caret after typing.
       if (this._focused) { input.focus(); input.setSelectionRange(input.value.length, input.value.length); }
@@ -773,44 +798,38 @@ class HacsStorePanel extends HTMLElement {
       input.addEventListener("blur", () => { this._focused = false; });
       input.addEventListener("input", e => this._setQuery(e.target.value));
     }
+  }
 
-    root.addEventListener("click", e => {
-      const hit = sel => e.composedPath().find(n => n.dataset && n.dataset[sel] !== undefined);
-      const s = this._s;
+  _onClick(e) {
+    const hit = sel => e.composedPath().find(n => n.dataset && n.dataset[sel] !== undefined);
+    const s = this._s;
 
-      const act = hit("act");
-      if (act) { e.stopPropagation(); const en = this._entry(act.dataset.act); if (en) this._act(en); return; }
+    const act = hit("act");
+    if (act) { e.stopPropagation(); const en = this._entry(act.dataset.act); if (en) this._act(en); return; }
 
-      const drop = hit("drop");
-      if (drop) return this.set({ removed: [...s.removed, drop.dataset.drop] });
+    const drop = hit("drop");
+    if (drop) return this.set({ removed: [...s.removed, drop.dataset.drop] });
 
-      const nav = hit("nav");
-      if (nav) return this.set({ screen: nav.dataset.nav, q: nav.dataset.nav === "search" ? s.q : "" });
+    const nav = hit("nav");
+    if (nav) return this.set({ screen: nav.dataset.nav, q: nav.dataset.nav === "search" ? s.q : "" });
 
-      const type = hit("type");   if (type) return this.set({ type: type.dataset.type });
-      const cat = hit("cat");     if (cat) return this.set({ category: cat.dataset.cat || null });
-      const mode = hit("mode");   if (mode) return this.set({ railMode: mode.dataset.mode });
-      const sort = hit("sort");   if (sort) return this.set({ sort: sort.dataset.sort });
-      const st = hit("status");   if (st) return this.set({ status: st.dataset.status });
-      const wi = hit("within");   if (wi) return this.set({ within: wi.dataset.within });
-      const if_ = hit("ifilter"); if (if_) return this.set({ installedFilter: if_.dataset.ifilter });
-      const q = hit("q");         if (q) return this._setQuery(q.dataset.q);
-      const seeAll = hit("seeall"); if (seeAll) return this.set({ category: seeAll.dataset.seeall || null });
-      const back = hit("back");   if (back) return this.set({ screen: s.q ? "search" : "home" });
-      const clear = hit("clear"); if (clear) return this._setQuery("");
-      const rm = hit("readme");   if (rm) return this._loadReadme();
+    const type = hit("type");   if (type) return this.set({ type: type.dataset.type });
+    const cat = hit("cat");     if (cat) return this.set({ category: cat.dataset.cat || null });
+    const mode = hit("mode");   if (mode) return this.set({ railMode: mode.dataset.mode });
+    const sort = hit("sort");   if (sort) return this.set({ sort: sort.dataset.sort });
+    const st = hit("status");   if (st) return this.set({ status: st.dataset.status });
+    const wi = hit("within");   if (wi) return this.set({ within: wi.dataset.within });
+    const if_ = hit("ifilter"); if (if_) return this.set({ installedFilter: if_.dataset.ifilter });
+    const q = hit("q");         if (q) return this._setQuery(q.dataset.q);
+    const seeAll = hit("seeall"); if (seeAll) return this.set({ category: seeAll.dataset.seeall || null });
+    const back = hit("back");   if (back) return this.set({ screen: s.q ? "search" : "home" });
+    const clear = hit("clear"); if (clear) return this._setQuery("");
+    const rm = hit("readme");   if (rm) return this._loadReadme();
 
-      if (hit("updateall")) {
-        for (const [fn, v] of Object.entries(s.installed)) {
-          const en = this._entry(fn);
-          if (en && en.last_version && en.last_version !== v) this._act(en);
-        }
-        return;
-      }
+    if (hit("updateall")) return this._updateAll();
 
-      const open = hit("open");
-      if (open) { const en = this._entry(open.dataset.open); if (en) this._open(en); }
-    });
+    const open = hit("open");
+    if (open) { const en = this._entry(open.dataset.open); if (en) this._open(en); }
   }
 }
 

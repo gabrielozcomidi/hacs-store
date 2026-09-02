@@ -28,7 +28,7 @@ from .const import (
 _LOGGER = logging.getLogger(__name__)
 
 
-def _version(hass: HomeAssistant) -> str:
+def _version() -> str:
     """Read our own version, used only to bust the browser cache on upgrade."""
     integration_dir = os.path.dirname(__file__)
     manifest = os.path.join(integration_dir, "manifest.json")
@@ -44,13 +44,19 @@ def _version(hass: HomeAssistant) -> str:
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Serve the frontend and put the panel in the sidebar."""
     frontend_dir = os.path.join(os.path.dirname(__file__), "frontend")
+    domain_data = hass.data.setdefault(DOMAIN, {})
 
-    # cache_headers=False: these files change when you edit them, and you will edit them.
-    await hass.http.async_register_static_paths(
-        [StaticPathConfig(URL_BASE, frontend_dir, False)]
-    )
+    # Static paths cannot be unregistered, so register once per HA run — a
+    # second registration on entry reload would fail setup.
+    if not domain_data.get("static_path_registered"):
+        # cache_headers=False: these files change when you edit them, and you will edit them.
+        await hass.http.async_register_static_paths(
+            [StaticPathConfig(URL_BASE, frontend_dir, False)]
+        )
+        domain_data["static_path_registered"] = True
 
-    version = _version(hass)
+    # File I/O must stay out of the event loop.
+    version = await hass.async_add_executor_job(_version)
 
     frontend.async_register_built_in_panel(
         hass,

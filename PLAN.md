@@ -104,9 +104,13 @@ parallel downloads. **Fix:** make the loop sequential
 
 ## Suggested implementation order
 
-1. **Milestone 1 — bug fixes:** items 1–5. Bump manifest version. Verify in a
-   live HA: single install fires one websocket call; entry reload works; a
-   README with a `javascript:` link renders inert.
+1. **Milestone 1 — bug fixes:** items 1–5. Bump manifest version. ✅ **Done**
+   (v0.1.1): click listener moved to the constructor, version read moved to an
+   executor job, static path registered once per HA run, README renderer
+   refuses non-http(s) schemes for links and images, "Update all" runs
+   sequentially. Still to verify on a live HA: single install fires one
+   websocket call; entry reload works; a README with a `javascript:` link
+   renders inert.
 2. **Milestone 2 — distribution:** items 10–12 (+14 if wanted): hacs.json,
    README, manifest URLs, GitHub Action.
 3. **Milestone 3 — polish:** items 6–9, 13.
