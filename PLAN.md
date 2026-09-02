@@ -112,7 +112,14 @@ parallel downloads. **Fix:** make the loop sequential
    websocket call; entry reload works; a README with a `javascript:` link
    renders inert.
 2. **Milestone 2 — distribution:** items 10–12 (+14 if wanted): hacs.json,
-   README, manifest URLs, GitHub Action.
+   README, manifest URLs, GitHub Action. ✅ **Done**: hacs.json (min HA
+   2024.6), README.md, MIT LICENSE, repo topics, and a Validate workflow
+   (hassfest + HACS action) — green as of this commit. CI also caught and
+   fixed a real bug: translations/en.json used `config_flow` instead of
+   `config` as its top-level key, so the config dialog showed raw keys.
+   Two HACS checks (hacsjson, integration_manifest) are ignored while the
+   repo is private — they fetch file contents remotely and 404; remove the
+   ignores when the repo goes public.
 3. **Milestone 3 — polish:** items 6–9, 13.
 
 Each milestone is one commit/PR-sized chunk; nothing depends on tooling that
