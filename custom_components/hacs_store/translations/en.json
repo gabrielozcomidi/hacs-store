@@ -1,0 +1,14 @@
+{
+  "title": "HACS Store",
+  "config_flow": {
+    "step": {
+      "user": {
+        "title": "HACS Store",
+        "description": "Adds a HACS Store panel to your sidebar. Nothing to configure."
+      }
+    },
+    "abort": {
+      "already_configured": "HACS Store is already set up."
+    }
+  }
+}

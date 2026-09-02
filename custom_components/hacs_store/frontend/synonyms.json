@@ -1,0 +1,90 @@
+{
+  "_readme": "Intent/synonym map applied to the query BEFORE searching. Key = a word a person types; value = terms actually present in catalog names, domains, topics or descriptions. Hebrew keys work the same way. Edit freely — this file is meant to be yours.",
+
+  "_stopwords": [
+    "how", "do", "i", "can", "want", "to", "a", "an", "the", "my", "me", "for",
+    "with", "need", "get", "is", "are", "in", "on", "of", "and", "some", "any",
+    "איך", "אני", "רוצה", "צריך", "את", "של", "עם", "על", "לי", "כדי", "יש"
+  ],
+
+  "tv": ["tv", "media_player", "webos", "tizen", "samsung", "androidtv", "cast"],
+  "television": ["tv", "media_player", "webos", "tizen", "samsung"],
+  "music": ["media_player", "spotify", "sonos", "audio"],
+  "speaker": ["media_player", "sonos", "alexa", "audio"],
+
+  "power": ["energy", "power", "electricity", "consumption"],
+  "bill": ["energy", "tariff", "price", "cost", "electricity"],
+  "electricity": ["energy", "electricity", "power", "tariff"],
+  "solar": ["solar", "inverter", "pv", "energy"],
+  "meter": ["energy", "sensor", "consumption", "meter"],
+
+  "vacuum": ["vacuum", "robot", "roborock", "dreame", "valetudo"],
+  "hoover": ["vacuum", "robot"],
+  "cleaner": ["vacuum", "robot"],
+
+  "ac": ["climate", "hvac", "thermostat", "air"],
+  "aircon": ["climate", "hvac", "air"],
+  "heating": ["climate", "thermostat", "trv", "heating"],
+  "thermostat": ["climate", "thermostat", "trv"],
+
+  "light": ["light", "lighting", "bulb", "brightness"],
+  "lights": ["light", "lighting", "bulb"],
+  "lamp": ["light", "bulb"],
+
+  "camera": ["camera", "nvr", "cctv", "stream"],
+  "doorbell": ["camera", "doorbell", "chime"],
+  "cctv": ["camera", "nvr", "cctv"],
+  "alarm": ["alarm", "security", "siren"],
+
+  "car": ["vehicle", "car", "tesla", "ev"],
+  "vehicle": ["vehicle", "car", "tesla"],
+  "charger": ["ev", "charger", "energy"],
+
+  "presence": ["presence", "device_tracker", "occupancy", "ble"],
+  "tracking": ["device_tracker", "presence", "location"],
+  "phone": ["device_tracker", "ios", "presence"],
+
+  "weather": ["weather", "forecast", "sun"],
+  "forecast": ["weather", "forecast"],
+
+  "graph": ["graph", "chart", "apexcharts", "history"],
+  "chart": ["chart", "graph", "apexcharts"],
+  "charts": ["chart", "graph", "apexcharts"],
+  "dashboard": ["frontend", "cards", "lovelace", "dashboard"],
+  "popup": ["popup", "browser_mod", "bubble", "frontend"],
+  "popups": ["popup", "browser_mod", "bubble", "frontend"],
+  "theme": ["theme", "css", "card-mod", "styling"],
+  "button": ["button", "frontend", "cards"],
+
+  "notify": ["notification", "notify", "telegram", "pushover"],
+  "notification": ["notification", "notify", "alert"],
+  "backup": ["backup", "snapshot", "restore"],
+  "schedule": ["schedule", "scheduler", "automation", "timer"],
+  "python": ["python", "pyscript", "developer"],
+  "local": ["local", "cloud", "lan"],
+  "cloud": ["local", "cloud"],
+
+  "מזגן": ["climate", "hvac", "ac", "air", "thermostat"],
+  "מיזוג": ["climate", "hvac", "air"],
+  "חימום": ["climate", "heating", "trv", "thermostat"],
+  "חשמל": ["energy", "electricity", "power", "tariff"],
+  "צריכה": ["energy", "consumption", "power"],
+  "חשבון": ["tariff", "price", "cost", "energy"],
+  "תאורה": ["light", "lighting", "bulb"],
+  "אור": ["light", "bulb"],
+  "מצלמה": ["camera", "nvr", "cctv"],
+  "מצלמות": ["camera", "nvr", "cctv"],
+  "אזעקה": ["alarm", "security", "siren"],
+  "התראה": ["alert", "notification", "siren", "oref"],
+  "אזעקות": ["alert", "siren", "oref", "alarm"],
+  "שואב": ["vacuum", "robot", "dreame", "roborock"],
+  "אבק": ["vacuum", "robot"],
+  "רובוט": ["robot", "vacuum"],
+  "טלוויזיה": ["tv", "media_player", "samsung", "webos", "tizen"],
+  "רכב": ["vehicle", "car", "tesla"],
+  "מזג": ["weather", "forecast"],
+  "אוויר": ["weather", "air"],
+  "נוכחות": ["presence", "device_tracker", "occupancy"],
+  "רכבת": ["train", "rail", "transport"],
+  "גיבוי": ["backup", "snapshot"]
+}

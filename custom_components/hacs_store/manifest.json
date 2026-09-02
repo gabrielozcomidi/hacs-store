@@ -1,0 +1,13 @@
+{
+  "domain": "hacs_store",
+  "name": "HACS Store",
+  "version": "0.1.0",
+  "documentation": "https://github.com/gabrielozcomidi/hacs-store",
+  "issue_tracker": "https://github.com/gabrielozcomidi/hacs-store/issues",
+  "codeowners": ["@gabrielozcomidi"],
+  "config_flow": true,
+  "dependencies": ["http", "frontend", "hacs"],
+  "integration_type": "service",
+  "iot_class": "local_polling",
+  "requirements": []
+}
