@@ -28,4 +28,7 @@ jobs:
           category: integration
           # brands: not registered in home-assistant/brands (icons come from the
           # GitHub avatar fallback); register there later to drop this ignore.
-          ignore: brands
+          # hacsjson + integration_manifest: these fetch file contents remotely,
+          # which fails while the repo is private. Drop both ignores when the
+          # repo goes public (required for real HACS installs anyway).
+          ignore: brands hacsjson integration_manifest
